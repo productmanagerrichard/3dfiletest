@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fitz Frames – 3D Viewer (Web POC)</title>
+  <!-- Lightweight web component from Google for 3D/AR. Works on iOS Safari, Chrome, etc. -->
+  <script type="module" src="https://unpkg.com/@google/model-viewer@3.4.0/dist/model-viewer.min.js"></script>
+  <style>
+    :root{
+      --bg:#0e1116; --card:#121720; --text:#e8e8e8; --muted:#9aa4b2; --accent:#2d4193;
+    }
+    html,body{height:100%;margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial,sans-serif;color:var(--text)}
+    .wrap{max-width:1100px;margin:0 auto;padding:24px;}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+    h1{font-size:20px;font-weight:650;margin:0}
+    .viewer-card{background:var(--card);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35);padding:12px}
+    model-viewer{width:100%;height:62vh;background:linear-gradient(180deg,#0f1320,#0b0e16)}
+    .row{display:flex;gap:12px;margin-top:12px;flex-wrap:wrap}
+    .btn{appearance:none;border:1px solid #2a3344;background:transparent;color:var(--text);padding:10px 14px;border-radius:10px;cursor:pointer}
+    .btn:hover{border-color:#3b4760}
+    .pill{font-size:12px;color:var(--muted)}
+    .file-input{display:none}
+    .meta{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--muted)}
+    footer{margin-top:14px;color:var(--muted);font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Fitz Frames – Interactive Model</h1>
+      <span class="pill">Drop in your GLB exports below</span>
+    </header>
+
+    <div class="viewer-card">
+      <!--
+        Replace src="/models/brimmer.glb" with your exported GLB (PBR, Draco+Meshopt, KTX2 textures)
+        Replace with your USDZ for Quick Look on iOS
+      -->
+      <model-viewer id="viewer"
+        src="/models/brimmer.glb"
+        ios-src="/models/brimmer.usdz"
+        poster=""
+        camera-controls
+        touch-action="pan-y"
+        exposure="1"
+        environment-image="neutral"
+        shadow-intensity="0.4"
+        shadow-softness="0.7"
+        auto-rotate
+        rotation-per-second="25deg"
+        disable-zoom
+        alt="Fitz Frames – Brimmer" >
+        
+        
+      </model-viewer>
+
+      <div class="row">
+        <label class="btn" for="fileGlb">Load GLB</label>
+        <input id="fileGlb" class="file-input" type="file" accept=".glb,.gltf" />
+        
+        
+        <button class="btn" id="resetCam">Reset camera</button>
+        <button class="btn" id="toggleZoom">Toggle zoom</button>
+        <button class="btn" id="screenshot">Screenshot PNG</button>
+      </div>
+
+      <div class="meta" id="meta"></div>
+
+      <footer>
+        Gestures: drag to rotate · two-finger drag to pan · pinch to zoom (if enabled). Use AR on compatible devices.
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    const mv = document.getElementById('viewer');
+    const meta = document.getElementById('meta');
+    const fmtBytes = b=>{
+      if(!b && b!==0) return '';
+      const u=['B','KB','MB','GB']; let i=0; while(b>1024 && i<u.length-1){b/=1024;i++} return b.toFixed(1)+' '+u[i];
+    };
+
+    function updateMeta(){
+      const d = mv?.model?.materials?.length ? mv.model : null;
+      const tri = d?.triangleCount || 0; const mat = d?.materials?.length || 0;
+      meta.textContent = `Triangles: ${tri.toLocaleString()} · Materials: ${mat} · Allow zoom: ${!mv.hasAttribute('disable-zoom')}`;
+    }
+    mv.addEventListener('load', updateMeta);
+
+    document.getElementById('fileGlb').addEventListener('change', async (e)=>{
+      const f = e.target.files[0]; if(!f) return;
+      const url = URL.createObjectURL(f); mv.src = url; updateMeta();
+    });
+    document.getElementById('fileUsdz').addEventListener('change', async (e)=>{
+      const f = e.target.files[0]; if(!f) return;
+      const url = URL.createObjectURL(f); mv.setAttribute('ios-src', url);
+    });
+
+    document.getElementById('resetCam').onclick = ()=>{
+      mv.cameraOrbit = '0deg 75deg 100%';
+      mv.fieldOfView = '45deg';
+      mv.interactionPrompt = 'auto';
+    };
+    document.getElementById('toggleZoom').onclick = ()=>{
+      if(mv.hasAttribute('disable-zoom')) mv.removeAttribute('disable-zoom');
+      else mv.setAttribute('disable-zoom', '');
+      updateMeta();
+    };
+
+    document.getElementById('screenshot').onclick = async ()=>{
+      const blob = await mv.toBlob({idealAspect:true, mimeType:'image/png'});
+      const a = document.createElement('a');
+      a.download = 'fitzframes_screenshot.png';
+      a.href = URL.createObjectURL(blob);
+      a.click();
+    };
+  </script>
+</body>
+</html>
