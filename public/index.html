@@ -6,53 +6,25 @@
   <title>Fitz Frames – 3D Viewer</title>
   <script type="module" src="https://unpkg.com/@google/model-viewer@3.4.0/dist/model-viewer.min.js"></script>
   <style>
-    :root {
-      --bg: #0e1116;
-      --card: #121720;
-      --text: #e8e8e8;
-      --accent: #2d4193;
-    }
-    html, body {
-      height: 100%;
-      margin: 0;
-      background: var(--bg);
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Helvetica, Arial, sans-serif;
-      color: var(--text);
-    }
-    .wrap {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 24px;
-    }
-    h1 {
-      font-size: 20px;
-      font-weight: 650;
-      margin-bottom: 12px;
-      text-align: center;
-    }
-    model-viewer {
-      width: 100%;
-      height: 80vh;
-      background: linear-gradient(180deg, #0f1320, #0b0e16);
-      border-radius: 16px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-    }
-    footer {
-      margin-top: 10px;
-      font-size: 12px;
-      color: #9aa4b2;
-      text-align: center;
-    }
+    :root { --bg:#0e1116; --card:#121720; --text:#e8e8e8; --muted:#9aa4b2; }
+    html,body{height:100%;margin:0;background:var(--bg);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--text)}
+    .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:14px;padding:24px;max-width:1100px;margin:0 auto}
+    h1{font-size:20px;font-weight:650;margin:0;text-align:center}
+    model-viewer{width:100%;height:72vh;background:linear-gradient(180deg,#0f1320,#0b0e16);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    .controls{display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:center}
+    .group{display:flex;align-items:center;gap:10px;background:var(--card);padding:10px 12px;border-radius:12px;border:1px solid #1e2533}
+    .label{font-size:12px;color:var(--muted);margin-right:2px}
+    .swatch{width:28px;height:28px;border-radius:999px;border:2px solid rgba(255,255,255,.25);cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+    .swatch[aria-selected="true"]{outline:2px solid #fff;outline-offset:2px}
+    .chip{font-size:12px;line-height:1;border:1px solid #2a3344;padding:6px 8px;border-radius:999px;cursor:pointer;background:transparent;color:var(--text)}
+    .chip[aria-selected="true"]{background:#1b2230}
+    footer{font-size:12px;color:var(--muted);text-align:center;margin-top:2px}
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>Fitz Frames – Brimmer</h1>
+
     <model-viewer
       id="viewer"
       src="/models/brimmer.glb"
@@ -66,9 +38,131 @@
       auto-rotate
       rotation-per-second="25deg">
     </model-viewer>
-    <footer>
-      Drag to rotate · Two-finger drag to pan · Pinch to zoom
-    </footer>
+
+    <div class="controls">
+      <!-- Frame colors -->
+      <div class="group" id="frameGroup" role="radiogroup" aria-label="Frame color">
+        <span class="label">Frame:</span>
+        <button class="swatch" data-hex="#dddddd" aria-label="Light Gray" aria-selected="true" style="background:#dddddd"></button>
+        <button class="swatch" data-hex="#cb263a" aria-label="Crimson" style="background:#cb263a"></button>
+      </div>
+
+      <!-- Lens tints -->
+      <div class="group" id="lensGroup" role="radiogroup" aria-label="Lens tint">
+        <span class="label">Lenses:</span>
+        <button class="chip" data-hex="none" data-opacity="0" aria-label="Clear" aria-selected="true">Clear</button>
+        <button class="chip" data-hex="#808080" data-opacity="0.15" aria-label="Smoke">Smoke</button>
+        <button class="chip" data-hex="#4b5b4b" data-opacity="0.18" aria-label="G15">G15</button>
+        <button class="chip" data-hex="#6aa3ff" data-opacity="0.12" aria-label="Blue">Blue</button>
+      </div>
+    </div>
+
+    <footer>Drag to rotate · Two-finger drag to pan · Pinch to zoom</footer>
   </div>
+
+  <script>
+    const mv = document.getElementById('viewer');
+    const frameGroup = document.getElementById('frameGroup');
+    const lensGroup  = document.getElementById('lensGroup');
+
+    // Convert sRGB hex to linear RGBA (for PBR baseColorFactor)
+    function hexToLinearRGBA(hex){
+      if(!hex || hex === 'none') return null;
+      const m = /^#?([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]{2})$/i.exec(hex);
+      if(!m) return [1,1,1,1];
+      const srgb = [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)].map(v=>v/255);
+      const toLinear = c => (c <= 0.04045) ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
+      const lin = srgb.map(toLinear);
+      return [lin[0], lin[1], lin[2], 1.0];
+    }
+
+    // Utility to mark selection
+    function selectInGroup(group, el){
+      [...group.querySelectorAll('[aria-selected]')].forEach(b=>b.setAttribute('aria-selected','false'));
+      el.setAttribute('aria-selected','true');
+    }
+
+    // Apply frame color to all non-lens materials
+    function applyFrameColor(hex){
+      const color = hexToLinearRGBA(hex);
+      const model = mv.model; if(!model || !color) return;
+      for(const mat of model.materials){
+        const name = (mat.name || '').toLowerCase();
+        if (name.includes('lens') || name.includes('glass')) continue; // skip lenses
+        try {
+          mat.pbrMetallicRoughness.setBaseColorFactor(color);
+        } catch {}
+      }
+    }
+
+    // Apply lens tint (color + translucency) to lens materials
+    function applyLensTint(hex, opacity){
+      const model = mv.model; if(!model) return;
+
+      for(const mat of model.materials){
+        const name = (mat.name || '').toLowerCase();
+        if (!(name.includes('lens') || name.includes('glass'))) continue;
+
+        // Defaults for clear lenses
+        let base = [1,1,1,1];
+        let alpha = 1.0;
+        let rough = 0.05;
+        let metal = 0.0;
+
+        if(hex !== 'none'){
+          const lin = hexToLinearRGBA(hex) || [1,1,1,1];
+          base = [lin[0], lin[1], lin[2], 1];
+          alpha = Math.max(0.0, Math.min(1.0, Number(opacity) || 0.15));
+        } else {
+          // Clear: essentially colorless and mostly transparent
+          base = [1,1,1,1];
+          alpha = 0.02; // nearly clear, but visible
+        }
+
+        try {
+          // Base color
+          mat.pbrMetallicRoughness.setBaseColorFactor(base);
+          // Glassy-ish look (without extensions)
+          mat.pbrMetallicRoughness.setMetallicFactor(metal);
+          mat.pbrMetallicRoughness.setRoughnessFactor(rough);
+
+          // Transparency
+          if(alpha > 0.001){
+            mat.setAlphaMode('BLEND');
+            // model-viewer derives actual opacity from baseColor + textures;
+            // many glTF pipelines rely on texture alpha, so use a tiny tint instead of pure alpha.
+            // If your lens material has a texture with alpha, this still works as a subtle tint.
+          } else {
+            mat.setAlphaMode('OPAQUE');
+          }
+        } catch {}
+      }
+    }
+
+    // Initialize after model loads
+    mv.addEventListener('load', () => {
+      // Apply initial frame color (first selected swatch)
+      const frameSelected = frameGroup.querySelector('[aria-selected="true"]');
+      if(frameSelected) applyFrameColor(frameSelected.dataset.hex);
+
+      // Apply initial lens tint (first selected chip)
+      const lensSelected = lensGroup.querySelector('[aria-selected="true"]');
+      if(lensSelected) applyLensTint(lensSelected.dataset.hex, lensSelected.dataset.opacity);
+    });
+
+    // Frame color clicks
+    frameGroup.addEventListener('click', (e)=>{
+      const btn = e.target.closest('.swatch'); if(!btn) return;
+      selectInGroup(frameGroup, btn);
+      applyFrameColor(btn.dataset.hex);
+    });
+
+    // Lens tint clicks
+    lensGroup.addEventListener('click', (e)=>{
+      const btn = e.target.closest('.chip'); if(!btn) return;
+      selectInGroup(lensGroup, btn);
+      applyLensTint(btn.dataset.hex, btn.dataset.opacity);
+    });
+  </script>
 </body>
 </html>
